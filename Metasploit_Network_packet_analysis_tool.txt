@@ -1,0 +1,67 @@
+# New Metasploit Module: Network Packet Analysis
+# Filename: modules/auxiliary/sniffer/packet_analyzer.rb
+
+require 'packetfu' # Ensures packet capturing is available
+
+class MetasploitModule < Msf::Auxiliary
+  include Msf::Exploit::Remote
+
+  def initialize(info = {})
+    super(update_info(info,
+      'Name'        => 'Network Packet Analyzer',
+      'Description' => %q{
+          This module captures network packets during exploitation or post-exploitation
+          and performs basic filtering, including displaying packets from specific IPs,
+          ports, or protocols to help with traffic analysis.
+      },
+      'Author'      => ['YourName'],
+      'License'     => MSF_LICENSE,
+      'References'  => []
+    ))
+
+    register_options([
+      OptString.new('INTERFACE', [true, 'Interface to capture traffic', 'eth0']),
+      OptInt.new('DURATION', [true, 'Duration in seconds for capture', 60]),
+      OptString.new('FILTER', [false, 'Filter criteria, e.g., src host 192.168.1.1', nil])
+    ])
+  end
+
+  def run
+    interface = datastore['INTERFACE']
+    duration = datastore['DURATION']
+    filter = datastore['FILTER']
+    
+    print_status("Starting packet capture on #{interface} for #{duration} seconds...")
+
+    # Initialize packet capture
+    cap = PacketFu::Capture.new(iface: interface, start: true, promisc: true)
+
+    # Capture packets for specified duration
+    sleep duration
+    cap.stop
+
+    # Apply filter if specified
+    packets = cap.array
+    if filter
+      packets.select! { |pkt| PacketFu::Packet.parse(pkt).inspect.match(/#{filter}/) }
+      print_status("Applied filter: #{filter}")
+    end
+
+    # Basic analysis: Count protocols and IPs
+    protocol_count = Hash.new(0)
+    ip_count = Hash.new(0)
+
+    packets.each do |packet|
+      pkt = PacketFu::Packet.parse(packet)
+      protocol_count[pkt.proto.last] += 1
+      ip_count[pkt.ip_saddr] += 1 if pkt.ip_saddr
+    end
+
+    # Display results
+    print_good("Protocol breakdown:")
+    protocol_count.each { |proto, count| print_good("#{proto}: #{count}") }
+
+    print_good("Top source IPs:")
+    ip_count.each { |ip, count| print_good("#{ip}: #{count}") }
+  end
+end
